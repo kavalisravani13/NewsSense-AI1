@@ -4,6 +4,7 @@
 
 import streamlit as st
 import pandas as pd
+import os
 
 from src.preprocessing import clean_text, word_count, reading_time_minutes
 from src.topic_matcher import calculate_relevance
@@ -59,11 +60,21 @@ menu = st.sidebar.radio(
 # =========================================================
 # LOAD AND PROCESS NEWS
 # =========================================================
-
 def load_and_process_news():
 
-    df = pd.read_csv("data/sample_news.csv")
+    import os
 
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+    csv_path = os.path.join(
+        BASE_DIR,
+        "data",
+        "sample_news.csv"
+    )
+
+    df = pd.read_csv(csv_path)
+
+    # Safety check for missing columns
     if "existing_summary" not in df.columns:
         df["existing_summary"] = ""
 
@@ -73,18 +84,18 @@ def load_and_process_news():
     df["source"] = df["source"].fillna("Unknown")
     df["existing_summary"] = df["existing_summary"].fillna("")
 
-    # TEXT CLEANING
+    # Text preprocessing
     df["clean_content"] = df["content"].apply(clean_text)
 
-    # WORD COUNT
-    df["word_count"] = df["clean_content"].apply(word_count)
+    df["word_count"] = df["clean_content"].apply(
+        word_count
+    )
 
-    # READING TIME
     df["reading_time"] = df["clean_content"].apply(
         reading_time_minutes
     )
 
-    # RELEVANCE SCORE
+    # Relevance score
     if "interests" in st.session_state:
 
         df["relevance_score"] = df.apply(
@@ -100,7 +111,7 @@ def load_and_process_news():
 
         df["relevance_score"] = 0
 
-    # CLICKBAIT DETECTION
+    # Clickbait detection
     df["clickbait_score"] = df.apply(
         lambda row: detect_clickbait(
             row["title"],
@@ -119,7 +130,7 @@ def load_and_process_news():
         axis=1
     )
 
-    # INITIAL NOISE SCORE
+    # Noise score
     df["noise_score"] = df.apply(
         lambda row: calculate_noise_score(
             row["clickbait_score"],
@@ -128,12 +139,12 @@ def load_and_process_news():
         axis=1
     )
 
-    # TRUST SCORE
+    # Trust score
     df["trust_score"] = df["noise_score"].apply(
         calculate_trust_score
     )
 
-    # DUPLICATE DETECTION
+    # Duplicate detection
     df, duplicate_count = detect_duplicates(
         df,
         text_column="clean_content",
@@ -142,7 +153,7 @@ def load_and_process_news():
 
     st.session_state["duplicate_count"] = duplicate_count
 
-    # FINAL NOISE SCORE
+    # Final noise score
     df["noise_score"] = df.apply(
         lambda row: calculate_noise_score(
             row["clickbait_score"],
@@ -155,12 +166,12 @@ def load_and_process_news():
         lambda x: round(min(x, 100), 2)
     )
 
+    # Final trust score
     df["trust_score"] = df["noise_score"].apply(
         calculate_trust_score
     )
 
     return df
-
 
 # =========================================================
 # HOME PAGE
