@@ -48,8 +48,6 @@ def save_user_profile(
     if connection is None:
         return None
 
-    cursor = None
-
     try:
 
         cursor = connection.cursor()
@@ -105,11 +103,8 @@ def save_user_profile(
 
     finally:
 
-        if cursor is not None:
-            cursor.close()
-
-        if connection.is_connected():
-            connection.close()
+        cursor.close()
+        connection.close()
 
 
 # =====================================================
@@ -137,8 +132,6 @@ def save_feedback_to_mysql(
 
     if connection is None:
         return False
-
-    cursor = None
 
     try:
 
@@ -193,11 +186,8 @@ def save_feedback_to_mysql(
 
     finally:
 
-        if cursor is not None:
-            cursor.close()
-
-        if connection.is_connected():
-            connection.close()
+        cursor.close()
+        connection.close()
 
 
 # =====================================================
@@ -212,8 +202,6 @@ def get_feedback_from_mysql():
 
     if connection is None:
         return []
-
-    cursor = None
 
     try:
 
@@ -255,8 +243,5 @@ def get_feedback_from_mysql():
 
     finally:
 
-        if cursor is not None:
-            cursor.close()
-
-        if connection.is_connected():
-            connection.close()
+        cursor.close()
+        connection.close()

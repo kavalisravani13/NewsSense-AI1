@@ -1,18 +1,27 @@
+# =========================================================
+# NEWSSENSE AI - STREAMLIT CLOUD VERSION (WITHOUT MYSQL)
+# =========================================================
+
 import streamlit as st
 import pandas as pd
 
 from src.preprocessing import clean_text, word_count, reading_time_minutes
 from src.topic_matcher import calculate_relevance
 from src.clickbait_detector import detect_clickbait
-from src.score_calculator import calculate_noise_score, calculate_trust_score, why_this_matters
-from src.summarizer import generate_summary
-from src.duplicate_filter import detect_duplicates, remove_duplicate_articles
-
-from src.mysql_database import (
-    save_user_profile,
-    save_feedback_to_mysql,
-    get_feedback_from_mysql
+from src.score_calculator import (
+    calculate_noise_score,
+    calculate_trust_score,
+    why_this_matters
 )
+from src.summarizer import generate_summary
+from src.duplicate_filter import (
+    detect_duplicates,
+    remove_duplicate_articles
+)
+
+# =========================================================
+# STREAMLIT PAGE CONFIG
+# =========================================================
 
 st.set_page_config(
     page_title="NewsSense AI",
@@ -22,6 +31,17 @@ st.set_page_config(
 
 st.title("📰 NewsSense AI")
 st.subheader("News Noise Reduction and Personalized Knowledge Digest Engine")
+
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+if "feedback_records" not in st.session_state:
+    st.session_state["feedback_records"] = []
+
+# =========================================================
+# SIDEBAR MENU
+# =========================================================
 
 menu = st.sidebar.radio(
     "Navigation",
@@ -36,14 +56,14 @@ menu = st.sidebar.radio(
     ]
 )
 
-if "feedback_records" not in st.session_state:
-    st.session_state["feedback_records"] = []
-
+# =========================================================
+# LOAD AND PROCESS NEWS
+# =========================================================
 
 def load_and_process_news():
+
     df = pd.read_csv("data/sample_news.csv")
 
-    # Safety check for missing columns
     if "existing_summary" not in df.columns:
         df["existing_summary"] = ""
 
@@ -53,13 +73,20 @@ def load_and_process_news():
     df["source"] = df["source"].fillna("Unknown")
     df["existing_summary"] = df["existing_summary"].fillna("")
 
-    # Text preprocessing
+    # TEXT CLEANING
     df["clean_content"] = df["content"].apply(clean_text)
-    df["word_count"] = df["clean_content"].apply(word_count)
-    df["reading_time"] = df["clean_content"].apply(reading_time_minutes)
 
-    # Relevance score
+    # WORD COUNT
+    df["word_count"] = df["clean_content"].apply(word_count)
+
+    # READING TIME
+    df["reading_time"] = df["clean_content"].apply(
+        reading_time_minutes
+    )
+
+    # RELEVANCE SCORE
     if "interests" in st.session_state:
+
         df["relevance_score"] = df.apply(
             lambda row: calculate_relevance(
                 row["clean_content"],
@@ -68,10 +95,12 @@ def load_and_process_news():
             ),
             axis=1
         )
+
     else:
+
         df["relevance_score"] = 0
 
-    # Clickbait detection using title + content + existing summary
+    # CLICKBAIT DETECTION
     df["clickbait_score"] = df.apply(
         lambda row: detect_clickbait(
             row["title"],
@@ -90,7 +119,7 @@ def load_and_process_news():
         axis=1
     )
 
-    # Initial noise and trust scores
+    # INITIAL NOISE SCORE
     df["noise_score"] = df.apply(
         lambda row: calculate_noise_score(
             row["clickbait_score"],
@@ -99,9 +128,12 @@ def load_and_process_news():
         axis=1
     )
 
-    df["trust_score"] = df["noise_score"].apply(calculate_trust_score)
+    # TRUST SCORE
+    df["trust_score"] = df["noise_score"].apply(
+        calculate_trust_score
+    )
 
-    # Duplicate detection
+    # DUPLICATE DETECTION
     df, duplicate_count = detect_duplicates(
         df,
         text_column="clean_content",
@@ -110,7 +142,7 @@ def load_and_process_news():
 
     st.session_state["duplicate_count"] = duplicate_count
 
-    # Final noise score including duplicate penalty
+    # FINAL NOISE SCORE
     df["noise_score"] = df.apply(
         lambda row: calculate_noise_score(
             row["clickbait_score"],
@@ -119,22 +151,39 @@ def load_and_process_news():
         axis=1
     )
 
-    df["noise_score"] = df["noise_score"].apply(lambda x: round(min(x, 100), 2))
-    df["trust_score"] = df["noise_score"].apply(calculate_trust_score)
+    df["noise_score"] = df["noise_score"].apply(
+        lambda x: round(min(x, 100), 2)
+    )
+
+    df["trust_score"] = df["noise_score"].apply(
+        calculate_trust_score
+    )
 
     return df
 
 
+# =========================================================
+# HOME PAGE
+# =========================================================
+
 if menu == "Home":
+
     st.header("Welcome to NewsSense AI")
 
     st.write("""
-    NewsSense AI uses a NewsSumm++ inspired dataset to reduce noisy,
-    duplicate, and clickbait-driven news into a personalized knowledge digest.
+    NewsSense AI reduces noisy, duplicate,
+    and clickbait-heavy news into a
+    personalized knowledge digest.
     """)
 
-    st.success("Create your profile first, then explore the news digest and dashboard.")
+    st.success(
+        "Create your profile first, then explore the digest."
+    )
 
+
+# =========================================================
+# USER PROFILE
+# =========================================================
 
 elif menu == "User Profile":
 
@@ -161,17 +210,28 @@ elif menu == "User Profile":
             "Lifestyle and Features",
             "Technology and Gadgets"
         ],
-        default=["Science and Technology", "Business and Finance"]
+        default=[
+            "Science and Technology",
+            "Business and Finance"
+        ]
     )
 
     knowledge_level = st.selectbox(
         "Select your knowledge level",
-        ["Beginner", "Intermediate", "Expert"]
+        [
+            "Beginner",
+            "Intermediate",
+            "Expert"
+        ]
     )
 
     digest_length = st.selectbox(
         "Preferred digest length",
-        ["Short", "Medium", "Detailed"]
+        [
+            "Short",
+            "Medium",
+            "Detailed"
+        ]
     )
 
     if st.button("Save Profile"):
@@ -181,146 +241,67 @@ elif menu == "User Profile":
         st.session_state["knowledge_level"] = knowledge_level
         st.session_state["digest_length"] = digest_length
 
-        # SAVE TO MYSQL
-        save_user_profile(
-            name,
-            knowledge_level,
-            digest_length,
-            interests
+        st.success(
+            "Profile saved successfully for this session!"
         )
 
-        st.success("Profile saved successfully and stored in MySQL!")
 
-    
+# =========================================================
+# NEWS DATASET
+# =========================================================
 
 elif menu == "News Dataset":
-    st.header("📂 NewsSumm++ Sample Dataset")
+
+    st.header("📂 News Dataset")
 
     df = load_and_process_news()
 
-    duplicate_count = st.session_state.get("duplicate_count", 0)
+    duplicate_count = st.session_state.get(
+        "duplicate_count",
+        0
+    )
+
     clean_articles = len(df) - duplicate_count
 
-    st.success(f"Dataset loaded successfully with {df.shape[0]} rows and {df.shape[1]} columns.")
+    st.success(
+        f"Dataset loaded with {df.shape[0]} rows."
+    )
 
     col1, col2, col3 = st.columns(3)
+
     col1.metric("Total Articles", len(df))
-    col2.metric("Duplicates Detected", duplicate_count)
+    col2.metric("Duplicates", duplicate_count)
     col3.metric("Clean Articles", clean_articles)
 
     st.subheader("Dataset Preview")
+
     st.dataframe(df.head(20))
 
-    st.subheader("Processed Dataset Preview")
-    st.dataframe(
-        df[[
-            "title",
-            "topic",
-            "source",
-            "word_count",
-            "reading_time",
-            "relevance_score",
-            "clickbait_score",
-            "clickbait_label",
-            "duplicate_score",
-            "is_duplicate",
-            "noise_score",
-            "trust_score"
-        ]].head(20)
-    )
 
-    st.subheader("Topic Distribution")
-    st.bar_chart(df["topic"].value_counts())
-
-    st.subheader("Clickbait Level Distribution")
-    st.bar_chart(df["clickbait_label"].value_counts())
-
-    st.subheader("Duplicate Detection Summary")
-    st.bar_chart(df["is_duplicate"].value_counts())
-
-    st.subheader("Dataset Columns")
-    st.write(df.columns.tolist())
+# =========================================================
+# NEWS DIGEST
+# =========================================================
 
 elif menu == "News Digest":
 
-    st.header("🧠 Your Personalized News Digest")
+    st.header("📰 Personalized News Digest")
 
     if "interests" not in st.session_state:
-        st.warning("Please create your profile first from the User Profile page.")
+
+        st.warning(
+            "Please create your profile first."
+        )
 
     else:
 
         df = load_and_process_news()
 
-        # Remove duplicate articles
         df = remove_duplicate_articles(df)
 
-        df["personalized_summary"] = df.apply(
-            lambda row: generate_summary(
-                row["clean_content"],
-                row["existing_summary"],
-                st.session_state["knowledge_level"],
-                st.session_state["digest_length"]
-            ),
-            axis=1
-        )
-
-        df["why_matters"] = df["topic"].apply(
-            lambda topic: why_this_matters(
-                topic,
-                st.session_state["interests"]
-            )
-        )
-
-        df["summary_reading_time"] = df["personalized_summary"].apply(
-            reading_time_minutes
-        )
-
-        df["time_saved"] = (
-            df["reading_time"] - df["summary_reading_time"]
-        )
-
-        df["time_saved"] = df["time_saved"].apply(
-            lambda x: max(0, x)
-        )
-
-        df = df.sort_values(
+        digest_df = df.sort_values(
             by=["relevance_score", "trust_score"],
             ascending=False
-        )
-
-        digest_df = df.head(10)
-
-        st.success(
-            f"Showing top {len(digest_df)} personalized non-duplicate articles for you."
-        )
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-
-        col1.metric("Articles Selected", len(digest_df))
-        col2.metric(
-            "Duplicates Removed",
-            st.session_state.get("duplicate_count", 0)
-        )
-
-        col3.metric(
-            "Avg Relevance",
-            f"{round(digest_df['relevance_score'].mean(), 2)}%"
-        )
-
-        col4.metric(
-            "Avg Trust",
-            f"{round(digest_df['trust_score'].mean(), 2)}%"
-        )
-
-        col5.metric(
-            "Time Saved",
-            f"{int(digest_df['time_saved'].sum())} min"
-        )
-
-        # =========================
-        # LOOP THROUGH ARTICLES
-        # =========================
+        ).head(10)
 
         for index, row in digest_df.iterrows():
 
@@ -328,35 +309,49 @@ elif menu == "News Digest":
 
             st.subheader(row["title"])
 
-            c1, c2, c3, c4, c5 = st.columns(5)
-
-            c1.metric("Relevance", f"{row['relevance_score']}%")
-            c2.metric("Clickbait", row["clickbait_label"])
-            c3.metric("Duplicate", f"{row['duplicate_score']}%")
-            c4.metric("Noise", f"{row['noise_score']}%")
-            c5.metric("Trust", f"{row['trust_score']}%")
-
-            st.write("**Topic:**", row["topic"])
-            st.write("**Source:**", row["source"])
-
-            st.info(row["personalized_summary"])
-
-            st.success(row["why_matters"])
+            st.write(f"Topic: {row['topic']}")
+            st.write(f"Source: {row['source']}")
 
             st.write(
-                f"⏱️ Original reading time: {row['reading_time']} min"
+                f"Relevance Score: {row['relevance_score']}"
             )
 
             st.write(
-                f"⚡ Time saved through digest: {row['time_saved']} min"
+                f"Clickbait Level: {row['clickbait_label']}"
             )
 
-            # =========================
-            # FEEDBACK SECTION
-            # =========================
+            st.write(
+                f"Duplicate Score: {row['duplicate_score']}"
+            )
+
+            st.write(
+                f"Noise Score: {row['noise_score']}"
+            )
+
+            st.write(
+                f"Trust Score: {row['trust_score']}"
+            )
+
+            summary = generate_summary(
+                row["clean_content"],
+                row["existing_summary"],
+                st.session_state["knowledge_level"],
+                st.session_state["digest_length"]
+            )
+
+            st.subheader("Summary")
+
+            st.write(summary)
+
+            st.info(
+                why_this_matters(
+                    row["topic"],
+                    st.session_state["interests"]
+                )
+            )
 
             feedback = st.selectbox(
-                f"Feedback for {row['title']}",
+                "Give Feedback",
                 [
                     "Relevant",
                     "Not Relevant",
@@ -367,277 +362,175 @@ elif menu == "News Digest":
                 key=f"feedback_{index}"
             )
 
-            feedback_key = f"submitted_{index}"
-
-            # Initialize session state
-            if feedback_key not in st.session_state:
-                st.session_state[feedback_key] = False
-
-            # Submit button
             if st.button(
-                f"Submit Feedback - {row['title']}",
-                key=f"btn_{index}"
+                f"Submit Feedback {index}"
             ):
 
-                # Prevent duplicate submission
-                if st.session_state[feedback_key]:
+                feedback_record = {
 
-                    st.warning(
-                        "Feedback already submitted for this article."
-                    )
+                    "user_name":
+                        st.session_state.get("name", ""),
 
-                else:
-
-                    feedback_record = {
-                        "user_name": st.session_state.get(
-                            "name",
-                            "Unknown User"
-                        ),
-                        "knowledge_level": st.session_state.get(
+                    "knowledge_level":
+                        st.session_state.get(
                             "knowledge_level",
-                            "Unknown"
+                            ""
                         ),
-                        "digest_length": st.session_state.get(
+
+                    "digest_length":
+                        st.session_state.get(
                             "digest_length",
-                            "Unknown"
+                            ""
                         ),
-                        "selected_interests": ", ".join(
-                            st.session_state.get("interests", [])
+
+                    "selected_interests":
+                        ", ".join(
+                            st.session_state.get(
+                                "interests",
+                                []
+                            )
                         ),
-                        "title": row["title"],
-                        "topic": row["topic"],
-                        "feedback": feedback,
-                        "relevance_score": row["relevance_score"],
-                        "clickbait_label": row["clickbait_label"],
-                        "duplicate_score": row["duplicate_score"],
-                        "noise_score": row["noise_score"],
-                        "trust_score": row["trust_score"]
-                    }
 
-                    # Save in session state
-                    st.session_state["feedback_records"].append(
-                        feedback_record
-                    )
+                    "title":
+                        row["title"],
 
-                    # Save in MySQL
-                    save_feedback_to_mysql(
-                        feedback_record["user_name"],
-                        feedback_record["knowledge_level"],
-                        feedback_record["digest_length"],
-                        feedback_record["selected_interests"],
-                        feedback_record["title"],
-                        feedback_record["topic"],
-                        feedback_record["feedback"],
-                        feedback_record["relevance_score"],
-                        feedback_record["clickbait_label"],
-                        feedback_record["duplicate_score"],
-                        feedback_record["noise_score"],
-                        feedback_record["trust_score"]
-                    )
+                    "topic":
+                        row["topic"],
 
-                    # Mark as submitted
-                    st.session_state[feedback_key] = True
+                    "feedback":
+                        feedback,
 
-                    st.success(
-                        f"Feedback saved to MySQL: {feedback}"
-                    )
+                    "relevance_score":
+                        row["relevance_score"],
 
-        # =========================
-        # DOWNLOAD SECTION
-        # =========================
+                    "clickbait_label":
+                        row["clickbait_label"],
 
-        st.subheader("Download Personalized Digest")
+                    "duplicate_score":
+                        row["duplicate_score"],
 
-        st.download_button(
-            "Download Digest CSV",
-            data=digest_df.to_csv(index=False),
-            file_name="personalized_news_digest.csv",
-            mime="text/csv"
-        )
+                    "noise_score":
+                        row["noise_score"],
+
+                    "trust_score":
+                        row["trust_score"]
+                }
+
+                st.session_state[
+                    "feedback_records"
+                ].append(feedback_record)
+
+                st.success(
+                    f"Feedback saved: {feedback}"
+                )
+
+
+# =========================================================
+# NEWS DIET DASHBOARD
+# =========================================================
 
 elif menu == "News Diet Dashboard":
+
     st.header("📊 News Diet Dashboard")
 
     if "interests" not in st.session_state:
-        st.warning("Please create your profile first from the User Profile page.")
-    else:
-        df = load_and_process_news()
 
-        total_articles_before = len(df)
-        duplicate_count = st.session_state.get("duplicate_count", 0)
-
-        # Keep only clean articles for digest dashboard
-        df = remove_duplicate_articles(df)
-
-        df["personalized_summary"] = df.apply(
-            lambda row: generate_summary(
-                row["clean_content"],
-                row["existing_summary"],
-                st.session_state["knowledge_level"],
-                st.session_state["digest_length"]
-            ),
-            axis=1
+        st.warning(
+            "Please create your profile first."
         )
 
-        df["summary_reading_time"] = df["personalized_summary"].apply(reading_time_minutes)
-        df["time_saved"] = df["reading_time"] - df["summary_reading_time"]
-        df["time_saved"] = df["time_saved"].apply(lambda x: max(0, x))
+    else:
+
+        df = load_and_process_news()
+
+        duplicate_count = st.session_state.get(
+            "duplicate_count",
+            0
+        )
+
+        df = remove_duplicate_articles(df)
 
         digest_df = df.sort_values(
             by=["relevance_score", "trust_score"],
             ascending=False
         ).head(10)
 
-        st.success("Your personalized news diet analysis is ready.")
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-
-        col1.metric("Articles Analyzed", total_articles_before)
-        col2.metric("Duplicates Removed", duplicate_count)
-        col3.metric("Digest Articles", len(digest_df))
-        col4.metric("Time Saved", f"{int(digest_df['time_saved'].sum())} min")
-        col5.metric("Avg Trust", f"{round(digest_df['trust_score'].mean(), 2)}%")
-
-        st.markdown("---")
-
-        st.subheader("📌 Topic Distribution in Your Digest")
-        st.bar_chart(digest_df["topic"].value_counts())
-
-        st.subheader("🧠 Average Relevance by Topic")
-        relevance_by_topic = digest_df.groupby("topic")["relevance_score"].mean().sort_values(ascending=False)
-        st.bar_chart(relevance_by_topic)
-
-        st.subheader("🛡️ Average Trust Score by Topic")
-        trust_by_topic = digest_df.groupby("topic")["trust_score"].mean().sort_values(ascending=False)
-        st.bar_chart(trust_by_topic)
-
-        st.subheader("🔊 Average Noise Score by Topic")
-        noise_by_topic = digest_df.groupby("topic")["noise_score"].mean().sort_values(ascending=False)
-        st.bar_chart(noise_by_topic)
-
-        st.subheader("🎯 Clickbait Level Distribution")
-        st.bar_chart(digest_df["clickbait_label"].value_counts())
-
-        st.subheader("♻️ Duplicate Detection Summary")
-        duplicate_summary = pd.Series({
-            "Clean Articles": len(df),
-            "Duplicates Removed": duplicate_count
-        })
-        st.bar_chart(duplicate_summary)
-
-        st.subheader("📋 News Diet Summary")
-
-        top_topic = digest_df["topic"].value_counts().idxmax()
-        avg_noise = round(digest_df["noise_score"].mean(), 2)
-        avg_trust = round(digest_df["trust_score"].mean(), 2)
-        total_time_saved = int(digest_df["time_saved"].sum())
-
-        st.info(
-            f"""
-            Your current news digest is mainly focused on **{top_topic}**.
-
-            Duplicates Removed: **{duplicate_count}**
-
-            Average Noise Score: **{avg_noise}%**
-
-            Average Trust Score: **{avg_trust}%**
-
-            Estimated Reading Time Saved: **{total_time_saved} minutes**
-            """
+        st.success(
+            "Your personalized news dashboard is ready."
         )
 
-        st.subheader("✅ Impact Generated")
+        col1, col2, col3 = st.columns(3)
 
-        st.write("""
-        NewsSense AI helps the user by:
-        - Reducing repeated and noisy news
-        - Removing duplicate stories
-        - Avoiding clickbait-heavy articles
-        - Prioritizing relevant topics
-        - Saving reading time
-        - Creating a healthier news consumption pattern
-        """)
+        col1.metric(
+            "Digest Articles",
+            len(digest_df)
+        )
 
+        col2.metric(
+            "Duplicates Removed",
+            duplicate_count
+        )
+
+        col3.metric(
+            "Average Trust",
+            f"{round(digest_df['trust_score'].mean(), 2)}%"
+        )
+
+        st.subheader("Topic Distribution")
+
+        st.bar_chart(
+            digest_df["topic"].value_counts()
+        )
+
+        st.subheader("Clickbait Distribution")
+
+        st.bar_chart(
+            digest_df["clickbait_label"].value_counts()
+        )
+
+
+# =========================================================
+# FEEDBACK DASHBOARD
+# =========================================================
 
 elif menu == "Feedback Dashboard":
+
     st.header("💬 Feedback Dashboard")
 
-    feedback_records = get_feedback_from_mysql()
+    feedback_records = st.session_state.get(
+        "feedback_records",
+        []
+    )
 
     if len(feedback_records) == 0:
-        st.info("No feedback submitted yet. Go to News Digest and submit feedback for articles.")
+
+        st.info(
+            "No feedback submitted yet."
+        )
+
     else:
-        feedback_df = pd.DataFrame(feedback_records)
 
-        st.success(f"Total feedback records collected: {len(feedback_df)}")
+        feedback_df = pd.DataFrame(
+            feedback_records
+        )
 
-        st.subheader("Feedback Records")
+        st.success(
+            f"Total feedback records: {len(feedback_df)}"
+        )
 
-        ordered_columns = [
-            "user_name",
-            "knowledge_level",
-            "digest_length",
-            "selected_interests",
-            "title",
-            "topic",
-            "feedback",
-            "relevance_score",
-            "clickbait_label",
-            "duplicate_score",
-            "noise_score",
-            "trust_score"
-        ]
+        st.dataframe(feedback_df)
 
-        st.dataframe(feedback_df[ordered_columns])
+        st.subheader("Feedback Distribution")
 
-        st.subheader("📌 Feedback Distribution")
-        st.bar_chart(feedback_df["feedback"].value_counts())
+        st.bar_chart(
+            feedback_df["feedback"].value_counts()
+        )
 
-        st.subheader("📰 Feedback by Topic")
-        st.bar_chart(feedback_df["topic"].value_counts())
+        st.subheader("Topic Distribution")
 
-        st.subheader("🎓 Feedback by Knowledge Level")
-        st.bar_chart(feedback_df["knowledge_level"].value_counts())
-
-        st.subheader("📊 Average Scores by Feedback Type")
-
-        score_summary = feedback_df.groupby("feedback")[
-            ["relevance_score", "duplicate_score", "noise_score", "trust_score"]
-        ].mean()
-
-        st.dataframe(score_summary)
-
-        st.subheader("🧠 Learning Insight")
-
-        most_common_feedback = feedback_df["feedback"].value_counts().idxmax()
-        most_common_level = feedback_df["knowledge_level"].value_counts().idxmax()
-
-        if most_common_feedback == "Relevant":
-            st.success(
-                f"Most feedback is marked as Relevant. The recommendation system is working well for {most_common_level} users."
-            )
-
-        elif most_common_feedback == "Not Relevant":
-            st.warning(
-                f"Many articles are marked as Not Relevant by {most_common_level} users. The system should adjust topic matching and recommendation ranking."
-            )
-
-        elif most_common_feedback == "Too Simple":
-            st.info(
-                f"Some {most_common_level} users feel the summaries are too simple. The system should generate more detailed summaries for this level."
-            )
-
-        elif most_common_feedback == "Too Complex":
-            st.info(
-                f"Some {most_common_level} users feel the summaries are too complex. The system should simplify future summaries for this level."
-            )
-
-        elif most_common_feedback == "Save Article":
-            st.success(
-                f"{most_common_level} users saved articles. Similar topics can be prioritized in future digests."
-            )
-
-        st.subheader("⬇️ Download Feedback Data")
+        st.bar_chart(
+            feedback_df["topic"].value_counts()
+        )
 
         st.download_button(
             "Download Feedback CSV",
@@ -647,30 +540,36 @@ elif menu == "Feedback Dashboard":
         )
 
 
+# =========================================================
+# ABOUT PROJECT
+# =========================================================
+
 elif menu == "About Project":
+
     st.header("About NewsSense AI")
 
     st.write("""
-    NewsSense AI is a News Noise Reduction Engine.
-    It uses news text, topic labels, and summaries to generate clean,
-    personalized, and meaningful news digests.
+    NewsSense AI is a personalized
+    news noise reduction engine.
+
+    It helps users:
+    - Avoid clickbait
+    - Remove duplicate news
+    - Save reading time
+    - Consume relevant news
+    - Improve information quality
     """)
 
     st.subheader("Core Features")
 
     st.write("""
-    - NewsSumm++ inspired news dataset
-    - User interest-based personalization
-    - Relevance score
+    - Personalized news digest
+    - Relevance scoring
     - Duplicate detection
     - Clickbait detection
     - Noise score
     - Trust score
-    - Personalized summaries
-    - Why this matters explanation
-    - News diet dashboard
-    - Feedback collection
+    - AI summaries
     - Feedback dashboard
-    - Feedback-based learning insight
-    - User-level feedback analysis
+    - News diet analytics
     """)
